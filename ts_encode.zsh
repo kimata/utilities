@@ -38,7 +38,7 @@ for ts_file in $TS_DIR/*.ts; do
     h=$(echo $dur | cut -d":" -f1)
     m=$(echo $dur | cut -d":" -f2)
     s=$(echo $dur | cut -d":" -f3)
-    frame_num=${$((($h*3600+$m*60+$s)*$fps))%%.*}
+    frame_num_ts=${$(((h*3600+m*60+s)*fps))%%.*}
 
     ffmpeg -i $ts_file -vcodec libx265 -preset slow -crf 24 -pix_fmt yuv420p -vf bwdif=1 -codec:a copy -bsf:a aac_adtstoasc -y $mp4_file |& awk '1;{fflush()}' RS='\r' >$log_file &
 
@@ -46,15 +46,28 @@ for ts_file in $TS_DIR/*.ts; do
     while ps -p $ffmpeg_pid>/dev/null  ; do
     	frame_done=$(tail -n 1 $log_file | awk 'match($0, /frame=\s*([0-9]+)/, m) { print m[1] }' )
   	if [[ -n "$frame_done" ]]; then
-  	    progress=$(printf "%.1f" $(($frame_done*100.0/$frame_num/2)))
+  	    progress=$(printf "%.1f" $((frame_done*100.0/frame_num_ts/2)))
   	    echo -n "\r\t$progress %"
   	    sleep 1
   	fi
     done
     sleep 1
     time_end=$(date +%s)
+    
+    dur=$(ffmpeg -i $ts_file 2>&1 | sed -n "s/.* Duration: \([^,]*\), start: .*/\1/p")
+    fps=$(ffmpeg -i $ts_file 2>&1 | sed -n "s/.*, \(.*\) tbr.*/\1/p")
+    h=$(echo $dur | cut -d":" -f1)
+    m=$(echo $dur | cut -d":" -f2)
+    s=$(echo $dur | cut -d":" -f3)
+    frame_num_mp4=${$(((h*3600+m*60+s)*fps))%%.*}
 
-    echo -n "Elapsed Time: "
+    if [[ $(((frame_num * 2) - frame_num_mp4)) -gt 2 ]]; then
+        echo "ERROR: The number of frames did not match. exp:$((frame_num * 2)) <-> act:$frame_num_mp4"
+	exit
+    fi
+
+    echo ""
+    echo -n "\tElapsed Time: "
     date -d@$(($time_end-$time_start)) -u +%H:%M:%S
     echo ""
 

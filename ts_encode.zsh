@@ -1,5 +1,7 @@
 #!/usr/bin/env zsh
 
+FFMPEG_OPT=(-vcodec libx265 -preset slow -crf 24 -pix_fmt yuv420p -vf bwdif=1 -codec:a copy -bsf:a aac_adtstoasc -y)
+
 if [ $# -ne 1 ]; then
     echo "usage: $0 PATH"
     exit
@@ -24,13 +26,16 @@ mkdir -p $WORK_DIR
 mkdir -p $DONE_DIR
 mkdir -p $LOG_DIR
 
+ts_files=($TS_DIR/*.ts)
+ts_count=${#ts_files[@]}
+
 i=0
 for ts_file in $TS_DIR/*.ts; do
     i=$((i + 1))
     mp4_file=$WORK_DIR/${ts_file:r:t}.mp4
     log_file=$LOG_DIR/${ts_file:r:t}.log
 
-    echo "Process[$i]: ${ts_file:r:t}"
+    echo "Process[$i/$ts_count]: ${ts_file:r:t}"
     time_start=$(date +%s)
 
     dur=$(ffmpeg -i $ts_file 2>&1 | sed -n "s/.* Duration: \([^,]*\), start: .*/\1/p")
@@ -40,7 +45,7 @@ for ts_file in $TS_DIR/*.ts; do
     s=$(echo $dur | cut -d":" -f3)
     frame_num_ts=${$(((h*3600+m*60+s)*fps))%%.*}
 
-    ffmpeg -i $ts_file -vcodec libx265 -preset slow -crf 24 -pix_fmt yuv420p -vf bwdif=1 -codec:a copy -bsf:a aac_adtstoasc -y $mp4_file |& awk '1;{fflush()}' RS='\r' >$log_file &
+    ffmpeg -i $ts_file "${FFMPEG_OPT[@]}" $mp4_file |& awk '1;{fflush()}' RS='\r' >$log_file &
 
     ffmpeg_pid=$!
     while ps -p $ffmpeg_pid>/dev/null  ; do
